@@ -1,11 +1,12 @@
-citation("EcoSimR")
 #' ---
 #' title: "Bloodmeals in German mosquito speces"
 #' author: "Renke Luehken"
 #' date: format(Sys.time(), "%d%b %Y")
 #' ---
 
-#df
+df
+df
+#df2
 
 # clear memory
 rm(list = ls())
@@ -30,13 +31,273 @@ setwd("C:/Users/RenkeLuehken/Google Drive/R/BLOODMEALS")
 #setwd("~/Google Drive/R/BLOODMEALS")
 
 # read data
-data<-read.table (file = "data/Test2.txt",row.names=1,header=TRUE,sep="\t")
+data <- read.table (file = "data/blood_mesoni.txt",row.names=1,header=TRUE,sep="\t")
 
 PathoNew<-read.table (file = "data/PathoNew.txt",row.names=1,header=TRUE,sep="\t")
+
+data_om <- na.omit(data)
+
+#============================================================
+# glmm analysis
+#============================================================
+# Test case : the non-monotonic Sobol g-function
+# The method of sobol requires 2 samples
+# (there are 8 factors, all following the uniform distribution on [0,1])
+library(sensitivity)
+library(boot)
+library(lhs)
+
+A <- randomLHS(n=10000, k=1)
+randomLHS(n=10000, k=1)
+
+X1 <- cbind(Fa= randomLHS(n=100000, k=1),
+            FH=randomLHS(n=100000, k=1)*0.2,
+            Fh= randomLHS(n=100000, k=1),
+            A=runif(100000,0.21,326),
+            Cv=runif(100000,0.1,0.9))
+gtz <- X1[,1] + X1[,2] + X1[,3]
+gtzT <- gtz<=1
+X1b<-(X1[gtzT,])
+
+X2<-cbind(Fa= randomLHS(n=100000, k=1),
+          FH=randomLHS(n=100000, k=1)*0.2,
+          Fh= randomLHS(n=100000, k=1),
+          A=runif(100000,0.21,326),
+          Cv=runif(100000,0.1,0.9))
+gtz <- X2[,1]+X2[,2]+X2[,3]
+gtzT <- gtz<=1
+X2b<-(X2[gtzT,])
+
+
+#X2[1:10,]
+#X1 <- data.frame(matrix(runif(8 * n), nrow = n))
+
+y <- function(X) X[,1]*X[,2] * X[,3] * X[,4]
+
+#sobol.fun
+
+X1c <- data.frame(X1b[,c(1,2,4,5)])
+X2c <- data.frame(X2b[,c(1,2,4,5)])
+
+
+
+n <- 1000
+X1 <- data.frame(matrix(runif(8 * n), nrow = n))
+X2 <- data.frame(matrix(runif(8 * n), nrow = n))
+
+# sensitivity analysis
+x <- sobol(model = sobol.fun, X1 = X1, X2 = X2, order = 2, nboot = 100)
+print(x)
+
+
+
+
+# sensitivity analysis
+x <- sobol(model = y, X1 = X1c[1:10000,], X2 = X2c[1:10000,], order = 2,
+           nboot = 10000)
+print(x)
+str(x)
+
+tztzt <- data.frame(AAA = x$X[,1]*x$X[,2], BBB = x$y)
+ggplot(tztzt, aes(x = AAA, y = BBB)) +
+  geom_point(colour = "gray", size = 0.1) +
+  theme_classic() #+
+  #stat_smooth(method = loess, colour = "black")
+
+plot(x$X[,1]*x$X[,1],
+     x$y)
+#plot(x)
+
+#============================================================
+# glmm analysis
+#============================================================
+colnames(data_om)
+## table 1
+ddply(data_om, .(HOST.GROUP.HUMAN, SPECIES), summarize, sum(POOLSIZE),.drop=F)
+ddply(data_om, .(SPECIES), summarize, length(unique(HOST.DNA.NEW)),.drop=F)
+ddply(data_om, .(HOST.GROUP.HUMAN,HOST.DNA.NEW), summarize, sum(POOLSIZE))
+
+
+
+# data preperation
+library(fifer)
+
+# Sampling Method
+XYb <- ddply(data_om,.(SAMPLING.METHOD, HOST.GROUP),
+            summarize, sum1 = sum(POOLSIZE),.drop=F)
+XYc <- rbind(XYb$sum1[1:2], XYb$sum1[3:4],
+             XYb$sum1[5:6], XYb$sum1[7:8],
+             XYb$sum1[9:10], XYb$sum1[11:12],
+             XYb$sum1[13:14], XYb$sum1[15:16])
+dimnames(XYc) <- list(period=c(as.character(unique(XYb$SAMPLING.METHOD))),
+                      loc=c("bird", "mammal"))
+chisq.test(XYc[apply(XYc, 1, function(x) !all(x==0)),])
+chisq.post.hoc(XYc)
+
+
+XY <- ddply(data,.(SPECIES, SAMPLING.METHOD, HOST.GROUP.HUMAN),
+      summarize, sum1 = sum(POOLSIZE),.drop=F)
+
+XYb <- subset(XY, SPECIES=="Ae. vexans")
+XYb <- subset(XY, SPECIES=="Cx. pipiens pipiens")
+XYb <- subset(XY, SPECIES=="Oc. cantans")
+
+XYc <- rbind(XYb$sum1[1:3], XYb$sum1[4:6],
+             XYb$sum1[7:9], XYb$sum1[10:12],
+             XYb$sum1[13:15], XYb$sum1[16:18],
+             XYb$sum1[19:21], XYb$sum1[22:24])
+chisq.test(XYc[apply(XYc[,-1], 1, function(x) !all(x==0)),])
+
+# period
+colnames(data)
+cbind(data$DATE, data$period)
+XYb <- ddply(data,.(period, HOST.GROUP.HUMAN),
+             summarize, sum1 = sum(POOLSIZE),.drop=F)
+XYc <- rbind(XYb$sum1[1:3], XYb$sum1[4:6])
+dimnames(XYc) <- list(period=c(as.character(unique(XYb$SAMPLING.METHOD))),loc=c("bird", "human","non-human mammal"))
+chisq.test(XYc[apply(XYc[,-1], 1, function(x) !all(x==0)),])
+chisq.post.hoc(XYc)
+
+
+XY <- ddply(data_om,.(SPECIES, SAMPLING.METHOD, HOST.GROUP.HUMAN),
+            summarize, sum1 = sum(POOLSIZE),.drop=F)
+
+XYb1 <- subset(XY, SPECIES=="Ae. vexans")
+XYb2 <- subset(XY, SPECIES=="Cx. pipiens pipiens")
+XYb3 <- subset(XY, SPECIES=="Oc. cantans")
+
+rbind(XYb1,XYb2,XYb3)
+
+XYc <- rbind(XYb$sum1[1:3], XYb$sum1[4:6])
+chisq.test(XYc[apply(XYc[,-1], 1, function(x) !all(x==0)),])
+#Go through each row and determine if a value is zero
+row_sub = apply(XYc, 1, function(row) all(row !=0 ))
+##Subset as usual
+rt<-XYc[row_sub,]
+
+#
+#dreDre <- subset(data, SPECIES=="Ae. vexans" | SPECIES=="Cx. pipiens pipiens" | SPECIES=="Oc. cantans")
+#tzt <- na.omit(dreDre)
+
+trap_method_1 <- ddply(data_om,.(SAMPLING.METHOD),
+                       summarise,d3=length(HOST.GROUP.HUMAN))
+trap_method_2 <- merge(trap_method_1, data_om, by="SAMPLING.METHOD")
+trap_method_3 <- ddply(trap_method_2,.(SAMPLING.METHOD, HOST.GROUP.HUMAN),summarise,
+             d4=length(HOST.GROUP.HUMAN)/d3*100)
+trap_method_4 <-unique(trap_method_3[c("SAMPLING.METHOD","HOST.GROUP.HUMAN","d4")])
+trap_method_5 <- merge(trap_method_4, trap_method_1, by="SAMPLING.METHOD")
+trap_method_1$pos <- 101
+
+trap_method <- ggplot(trap_method_5, aes(x = SAMPLING.METHOD,y=d4,ymax=140,fill=HOST.GROUP.HUMAN)) +
+  geom_bar(colour="black",position = 'stack',stat="identity")+
+  scale_fill_manual(guide = guide_legend(title = "host group"),values=c("black","white","gray"))+
+  #facet_wrap(~cluster,scales="free")+
+  ylab("percentage")+
+  xlab("trapping method")+
+  theme_classic()+
+  theme(axis.text.x = element_text(angle = 90, vjust = 0,hjust=1))+
+  scale_y_continuous(expand=c(0,0))+
+  annotate("text", x = 1:8, y = 90, label = c(trap_method_1$d3))
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+dimnames(XYc) <- list(period=c("early", "late"),loc=c("bird", "human","non-human mammal"))
+
+
+XY <- ddply(data,.(period, HOST.GROUP.HUMAN),
+            summarize, sum1 = sum(POOLSIZE),.drop=F)
+XYb <- subset(XY, SPECIES=="Oc. cantans")
+XYc <- rbind(XYb$sum1[1:3], XYb$sum1[4:6])
+dimnames(XYc) <- list(period=c("early", "late"),loc=c("bird", "human","non-human mammal"))
+chisq.test(XYc)
+
+
+# Makes a table of observations -- similar to first example in chisq.test
+M <- as.table(rbind(c(76, 32), c(48,23), c(45,34)))
+dimnames(M) <- list(sex=c("Male","Female","Juv"),loc=c("Lower","Middle"))
+M
+chisq.test(M)
+# Shows post-hoc pairwise comparisons using fdr method
+chisq.post.hoc(M)
+#
+
+colnames(data)
+A <- ddply(data,
+           .(TRAPPINGSITE,YEAR,HOST.GROUP.HUMAN,SAMPLING.METHOD,period),
+           summarize, sum1=sum(POOLSIZE))
+B <- ddply(A,.(TRAPPINGSITE, YEAR),summarize,sum2=sum(sum1))
+C <- merge(A,B,by=c("TRAPPINGSITE","YEAR"))
+C$dep <- C$sum1/C$sum2
+
+C2 <- subset(C, SPECIES=="Cx. pipiens pipiens")
+dsub <- subset(C,HOST.GROUP.HUMAN=="human")
+my.mod0 <- glm(dep ~  SAMPLING.METHOD + period, data = dsub, family = quasibinomial)
+my.mod1 <- glm(dep ~  period, data = dsub, family = quasibinomial)
+drop1(my.mod0,test="Chisq")
+
+summary(my.mod)
+
+
+library(lme4)
+lmer(dep~1+(SPECIES|TRAPPINGSITE),data=C)
+table(C$dep)
+
+colnames(birdA)
+birdA$feq <- ifelse(birdA$sum1 > 0, 1, 0)
+birdA <- subset(A, HOST.GROUP.HUMAN=="bird")
+TT1<- lmer(dep ~ (TRAPPINGSITE |SPECIES), family = quasibinomial, data = C)
+TT1<- glmer(dep ~ 1 + (1|SPECIES:TRAPPINGSITE:YEAR),
+            weights = C$sum2, family = binomial, data = C)
+
+TT1<- glmer(feq ~ 1 + (1|TRAPPINGSITE), family = binomial, data = birdA)
+TT2<- glmer(feq ~ 1 + (1|YEAR:TRAPPINGSITE:SPECIES),
+            family = binomial,
+            data = birdA)
+
+pchisq(logLik(TT1) - logLik(TT2), 1)
+anova(TT1, TT2)
+
+model<-lmer(dep ~ (1|SPECIES),quasibinomial,data=C) 
+summary(model)
+
+
+
+pchisq(logLik(TT1) - logLik(TT2), 1)
+
+vc<-VarCorr(TT2)
+summary(TT)
+sapply(TT, slot, "x")
+summary(TT)
+?lr.test()
 
 colnames(PathoNew)
 Patho2<-ddply(PathoNew,)
 
+#
+#
+#
+#
 ?weighted.mean
 library(SDMTools)
 Mend<-ddply(PathoNew,.(Host.class,Pathogen),summarise,
@@ -425,8 +686,8 @@ p <- ggplot(tztz_2, aes(x=SPECIES,y=(HOST.DNA.NEW)))+ geom_tile(aes(fill=sum))+
   scale_fill_gradient(guide = guide_legend(title = "percentage per mosquito species"),low="green", high="red")+
   #geom_point(data=zwei, aes(x=SPECIES, y=HOST.DNA.NEW,z=NULL,size=sum.x,colour=sum))+
   theme_bw()+
-  ylab("host species")+
-  xlab("mosquito species")+
+  ylab("Host species")+
+  xlab("Mosquito species")+
   ylim(rev(levels(tztz_2$HOST.DNA.NEW)))+
   theme(axis.text.y = element_text(vjust = 0.25,hjust=1))  +
   theme(axis.text.x = element_text(angle = 90, vjust = 0.25,hjust=1))  +
@@ -794,22 +1055,28 @@ dev.off()
 #newdata4[,7]
 #data3<-read.table (file = "data/Bloodmeals_FINAL.txt",row.names=1,header=TRUE,sep="\t")
 #data4<-na.omit(data3)
-XY<-read.table (file = "data/XYNEW.txt",row.names=1,header=TRUE,sep="\t")
-XY2<-data.frame(TRAPPINGSITE=rownames(XY),XY)
+#XY<-read.table (file = "data/XYNEW.txt",row.names=1,header=TRUE,sep="\t")
+XY2<-data.frame(x = data_om$x, y = data_om$y)
+
+unique(data$TRAPPINGSITE)
+dft <- merge(XY2, data, by="TRAPPINGSITE")
+sort(unique(data$TRAPPINGSITE))
 
 library(raster)
 r <- raster("data/df.tif") # CORINE land cover for Germany
 isBecomes <- cbind(c(seq(1,44),48,49,50,255),
                    (c(rep(1,11), # urban
-                      rep(4,1),  # acre
+                      rep(2,1),  # acre
                       rep(2,10),  # rural
                       rep(3,17),  # near natural
                       rep(4,5),  # water bodies
-                      4,4,4,4))) 
+                      5,5,5,5))) 
 rCORINEagg <- reclassify(r , rcl=isBecomes)
 
-VALUES_Land<-extract(rCORINEagg,cbind(XY2$y,XY2$x),
-                     buffer=200)
+plot(rCORINEagg)
+
+VALUES_Land <- extract(rCORINEagg, XY2,
+                     buffer=2500)
 toS<-lapply(VALUES_Land,table)
 
 rbind.named.fill <- function(x) {
@@ -824,6 +1091,32 @@ rbind.named.fill <- function(x) {
 }
 toS2<-rbind.named.fill(toS)
 toS2[is.na(toS2)] <- 0
+
+VALUES<-toS2/rowSums(toS2)*100
+VALUE_FULL <- cbind(VALUES,XY2)
+VALUE_FULL$IDsb <- VALUE_FULL$x + VALUE_FULL$y
+
+dataxx<-subset(data_om, SPECIES=="Cx. pipiens pipiens")
+dataxx$IDsb <- dataxx$x + dataxx$y
+
+#WERTE <- merge(data_om,VALUE_FULL, by="TRAPPINGSITE")
+trap_method_1 <- ddply(dataxx,.(IDsb),
+                       summarise,d3=length(HOST.GROUP.HUMAN))
+trap_method_2 <- merge(trap_method_1, dataxx, by="IDsb")
+trap_method_3 <- ddply(trap_method_2,.(IDsb, HOST.GROUP.HUMAN),summarise,
+                       d4=length(HOST.GROUP.HUMAN)/d3*100)
+trap_method_4 <- unique(trap_method_3[c("IDsb","HOST.GROUP.HUMAN","d4")])
+trap_method_5 <- merge(trap_method_4, trap_method_1, by="IDsb")
+
+trtdd <- VALUE_FULL[!duplicated(VALUE_FULL[6:7]),]
+
+WERTE <- merge(trap_method_4, trtdd, by = "IDsb")
+human <- subset(WERTE, HOST.GROUP.HUMAN == "bird")
+plot(human[,8], human$d4)
+
+plot(human[,6], human$d4)
+
+
 PCFIDL<-prcomp(toS2)$x[,1:2]
 XY3<-cbind(XY2,PCFIDL)
 
@@ -941,7 +1234,7 @@ newdata <-cbind(d_dypl2[with(d_dypl2, order(-freq)), ],num=seq(1,nrow(d_dypl2),1
 newdata4<-merge(data4,newdata,by="HOST.DNA.NEW")
 newdata4$HOST.DNA.NEW<-reorder(newdata4$HOST.DNA.NEW,newdata4$num)
 
-p2<-ggplot(data2, aes(x = HOST.DNA.NEW,fill=as.factor(PREVALENCE))) + 
+p2<-ggplot(data2, aes(x = HOST.DNA.NEW,fill=as.factor(Mesoni))) + 
   geom_bar(data=newdata3)+ 
   geom_bar(data=newdata4)+ 
   theme_classic()+
